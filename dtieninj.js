@@ -54,7 +54,47 @@ function updateState() {
             break;
     }
 }
+// ===== REALISTIC AIM DETECT SYSTEM =====
 
+// ===== MEMORY =====
+let AIM_MEMORY = {
+    lastTime: 0,
+    deltaTime: 0,
+    speed: 0,
+    pulling: false
+};
+
+// ===== DETECT =====
+function detectRealPull() {
+    const now = Date.now();
+
+    // tính khoảng thời gian giữa 2 response
+    AIM_MEMORY.deltaTime = now - AIM_MEMORY.lastTime;
+    AIM_MEMORY.lastTime = now;
+
+    // tính "tốc độ" (request dày = tốc độ cao)
+    AIM_MEMORY.speed = 1000 / (AIM_MEMORY.deltaTime + 1);
+
+    // ===== LOGIC DETECT =====
+    if (AIM_MEMORY.speed > 15) {
+        AIM_MEMORY.pulling = true;  // đang kéo nhanh
+    } else {
+        AIM_MEMORY.pulling = false;
+    }
+}
+// ===== DETECT REAL =====
+detectRealPull();
+
+// ===== STATE LOGIC =====
+if (AIM_MEMORY.pulling) {
+    if (AIM_MEMORY.speed > 25) {
+        AIM_STATE.mode = "STICK";
+    } else {
+        AIM_STATE.mode = "MAGNET";
+    }
+} else {
+    AIM_STATE.mode = "SCAN";
+}
 // ===== CORE PROCESS =====
 function process(obj) {
     for (let key in obj) {
