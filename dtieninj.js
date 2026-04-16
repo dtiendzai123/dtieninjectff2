@@ -1,4 +1,4 @@
-// ===== UNIFIED FF AIM SYSTEM (REAL DETECT PRO) =====
+// ===== FF AIMBOT NETWORK SYSTEM (FULL PRO) =====
 
 // ===== FILTER =====
 const isFF = (url) => {
@@ -17,7 +17,7 @@ const isConfig = (url) => {
          url.includes("profile"));
 };
 
-// ===== MEMORY (GIỮ TRẠNG THÁI) =====
+// ===== MEMORY =====
 let AIM_MEMORY = {
     lastTime: 0,
     delta: 0,
@@ -26,27 +26,30 @@ let AIM_MEMORY = {
     stableFrames: 0
 };
 
-// ===== AIM STATE =====
+// ===== STATE =====
 let AIM_STATE = {
-    mode: "SCAN", // SCAN | MAGNET | STICK
+    mode: "SCAN",
     boost: 1.0,
     stability: 1.0
 };
 
-// ===== DETECT REAL (KHÔNG RANDOM) =====
+// ===== HEAD LOCK =====
+let HEAD_LOCK = {
+    active: false,
+    timer: 0
+};
+
+// ===== DETECT REAL PULL =====
 function detectRealPull() {
     const now = Date.now();
 
     AIM_MEMORY.delta = now - AIM_MEMORY.lastTime;
     AIM_MEMORY.lastTime = now;
 
-    // tốc độ request
     AIM_MEMORY.speed = 1000 / (AIM_MEMORY.delta + 1);
 
-    // detect kéo
     AIM_MEMORY.pulling = AIM_MEMORY.speed > 14;
 
-    // detect ổn định (giữ tâm)
     if (AIM_MEMORY.speed > 20) {
         AIM_MEMORY.stableFrames++;
     } else {
@@ -54,37 +57,91 @@ function detectRealPull() {
     }
 }
 
-// ===== UPDATE STATE (ƯU TIÊN STICKY HEAD) =====
-function updateState() {
+// ===== DETECT HEAD (GIÁN TIẾP) =====
+function detectHeadSignal(obj) {
 
-    if (AIM_MEMORY.pulling) {
+    let found = false;
 
-        if (AIM_MEMORY.stableFrames > 3) {
-            AIM_STATE.mode = "STICK"; // dính head
-        } else {
-            AIM_STATE.mode = "MAGNET"; // hút lên head
+    const scan = (o) => {
+        for (let k in o) {
+
+            const val = o[k];
+
+            if (typeof val === "object" && val !== null) {
+                scan(val);
+                continue;
+            }
+
+            const key = k.toLowerCase();
+
+            if (
+                key.includes("head") ||
+                key.includes("critical") ||
+                key.includes("hitbox")
+            ) {
+                found = true;
+            }
+
+            if (typeof val === "number" && val > 100) {
+                found = true;
+            }
         }
+    };
 
-    } else {
-        AIM_STATE.mode = "SCAN"; // tìm mục tiêu
+    scan(obj);
+    return found;
+}
+
+// ===== UPDATE STATE =====
+function updateState(body) {
+
+    detectRealPull();
+
+    const headDetected = detectHeadSignal(body);
+
+    // 🔥 HEAD LOCK
+    if (headDetected) {
+        HEAD_LOCK.active = true;
+        HEAD_LOCK.timer = 3;
     }
 
-    // ===== APPLY VALUE =====
+    if (HEAD_LOCK.timer > 0) {
+        HEAD_LOCK.timer--;
+    } else {
+        HEAD_LOCK.active = false;
+    }
+
+    // ===== MODE =====
+    if (HEAD_LOCK.active) {
+        AIM_STATE.mode = "STICK";
+    }
+    else if (AIM_MEMORY.pulling) {
+        if (AIM_MEMORY.stableFrames > 3) {
+            AIM_STATE.mode = "STICK";
+        } else {
+            AIM_STATE.mode = "MAGNET";
+        }
+    }
+    else {
+        AIM_STATE.mode = "SCAN";
+    }
+
+    // ===== VALUE =====
     switch (AIM_STATE.mode) {
 
         case "SCAN":
-            AIM_STATE.boost = 2.0;
+            AIM_STATE.boost = 2.5;
             AIM_STATE.stability = 0.6;
             break;
 
         case "MAGNET":
-            AIM_STATE.boost = 3.0;
+            AIM_STATE.boost = 3.2;
             AIM_STATE.stability = 1.0;
             break;
 
         case "STICK":
             AIM_STATE.boost = 0.45;
-            AIM_STATE.stability = 1.8;
+            AIM_STATE.stability = 2.0;
             break;
     }
 }
@@ -102,27 +159,51 @@ function process(obj) {
 
         const k = key.toLowerCase();
 
-        // 🔥 SENS (không bị quá đà)
+        // ===== SMART SENS =====
         if (k.includes("sens")) {
-            obj[key] = 220 * AIM_STATE.boost;
+
+            let base = 180;
+
+            if (AIM_STATE.mode === "SCAN") {
+                obj[key] = base * 2.8;
+            }
+            else if (AIM_STATE.mode === "MAGNET") {
+                obj[key] = base * 1.8;
+            }
+            else if (AIM_STATE.mode === "STICK") {
+                obj[key] = base * 0.6;
+            }
         }
 
-        // 🔥 AIM ASSIST (giữ head)
+        // ===== AIM LOCK =====
         else if (k.includes("aim")) {
-            obj[key] = Math.min(1.0, 0.9 * AIM_STATE.stability);
+            if (AIM_STATE.mode === "STICK") {
+                obj[key] = 1.0;
+            } else {
+                obj[key] = 0.85;
+            }
         }
 
-        // 🔥 RECOIL = 0
+        // ===== RECOIL =====
         else if (k.includes("recoil")) {
             obj[key] = 0;
         }
 
-        // 🔥 DRAG (tracking)
+        // ===== DRAG =====
         else if (k.includes("drag")) {
-            obj[key] = 2.8 * AIM_STATE.stability;
+
+            if (AIM_STATE.mode === "SCAN") {
+                obj[key] = 1.5;
+            }
+            else if (AIM_STATE.mode === "MAGNET") {
+                obj[key] = 2.5;
+            }
+            else if (AIM_STATE.mode === "STICK") {
+                obj[key] = 3.5;
+            }
         }
 
-        // 🔥 HEAD PRIORITY
+        // ===== HEAD PRIORITY =====
         else if (k.includes("head")) {
             obj[key] = 1.0;
         }
@@ -140,27 +221,19 @@ if ($response && isFF($request.url)) {
 
         try {
             body = JSON.parse($response.body);
-        } catch (e) {
-            console.log("❌ JSON FAIL");
-        }
+        } catch (e) {}
 
         if (!body) {
             $done({});
         } else {
 
-            // ===== DETECT REAL =====
-            detectRealPull();
-
-            // ===== UPDATE STATE =====
-            updateState();
-
-            // ===== APPLY =====
+            updateState(body);
             process(body);
 
             console.log(
                 "🎯 MODE:", AIM_STATE.mode,
                 "| SPEED:", AIM_MEMORY.speed.toFixed(1),
-                "| STABLE:", AIM_MEMORY.stableFrames
+                "| HEAD:", HEAD_LOCK.active
             );
 
             $done({ body: JSON.stringify(body) });
