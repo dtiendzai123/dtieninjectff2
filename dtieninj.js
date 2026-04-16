@@ -317,7 +317,7 @@ if (k.includes("sens")) {
         // ===== DRAG =====
        else if (k.includes("drag")) {
 
-    let drag = 2.0;
+    let drag = 5.0;
 
     if (AIM_STATE.mode === "SCAN") drag = 1.5;
     else if (AIM_STATE.mode === "MAGNET") drag = 2.5;
@@ -325,7 +325,7 @@ if (k.includes("sens")) {
 
     // 🔥 chống lệch khi đổi hướng
     if (ADV_STATE.switchDir) {
-        drag *= 2.0;
+        drag *= 5.0;
     }
 
     drag *= TARGET_STATE.horizontalBoost;
