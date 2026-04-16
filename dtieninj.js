@@ -248,14 +248,7 @@ function process(obj) {
         }
 
         const k = key.toLowerCase();
-else if (k.includes("aim")) {
 
-    let base = 0.85;
-
-    // 🔥 nếu địch chạy ngang → tăng tracking
-    if (TARGET_STATE.moving) {
-        base = 1.0;
-    }
 
     // 🔥 nếu đã dính head → khóa cứng
     if (AIM_STATE.mode === "STICK") {
