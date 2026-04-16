@@ -15,7 +15,7 @@ const isConfig = (url) => url && (
     url.includes("profile")
 );
 let CONTACT_STATE = {
-    detected: false,
+    detected: true,
     timer: 0
 };
 let ADV_STATE = {
@@ -30,7 +30,7 @@ let AIM_MEMORY = {
     lastTime: 0,
     delta: 0,
     speed: 0,
-    pulling: false,
+    pulling: true,
     stableFrames: 0
 };
 
@@ -46,13 +46,13 @@ let AIM_STATE = {
 };
 
 let HEAD_LOCK = {
-    active: false,
-    timer: 0
+    active: true,
+    timer: 5
 };
 
 let PULL_STATE = {
-    lastSpeed: 0,
-    accelerating: false
+    lastSpeed: 100,
+    accelerating: true
 };
 function detectEnemyContact(obj) {
 
