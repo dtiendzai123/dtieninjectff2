@@ -41,6 +41,24 @@ let HEAD_LOCK = {
     active: false,
     timer: 0
 };
+let PULL_STATE = {
+    lastSpeed: 0,
+    accelerating: false
+};
+function detectPullUp() {
+
+    const speedNow = AIM_MEMORY.speed;
+    const speedDiff = speedNow - PULL_STATE.lastSpeed;
+
+    // 🔥 tăng tốc đột ngột = kéo lên
+    if (speedDiff > 8 && speedNow > 18) {
+        PULL_STATE.accelerating = true;
+    } else {
+        PULL_STATE.accelerating = false;
+    }
+
+    PULL_STATE.lastSpeed = speedNow;
+}
 function detectMovingTarget() {
 
     // tốc độ cao nhưng không ổn định = đang di chuyển ngang
@@ -105,7 +123,62 @@ function detectHeadSignal(obj) {
     scan(obj);
     return found;
 }
+function updateState(body) {
 
+    detectRealPull();
+    detectPullUp();
+
+    const headDetected = detectHeadSignal(body);
+
+    // 🔥 ƯU TIÊN CAO NHẤT: KÉO LÊN → SNAP HEAD
+    if (PULL_STATE.accelerating) {
+        AIM_STATE.mode = "STICK"; // khóa đầu ngay
+        HEAD_LOCK.active = true;
+        HEAD_LOCK.timer = 2;
+    }
+
+    // 🔥 HEAD DETECT GIÁN TIẾP
+    else if (headDetected) {
+        HEAD_LOCK.active = true;
+        HEAD_LOCK.timer = 3;
+    }
+
+    if (HEAD_LOCK.timer > 0) {
+        HEAD_LOCK.timer--;
+    } else {
+        HEAD_LOCK.active = false;
+    }
+
+    // ===== MODE =====
+    if (HEAD_LOCK.active) {
+        AIM_STATE.mode = "STICK";
+    }
+    else if (AIM_MEMORY.pulling) {
+        AIM_STATE.mode = "MAGNET";
+    }
+    else {
+        AIM_STATE.mode = "SCAN";
+    }
+
+    // ===== VALUE =====
+    switch (AIM_STATE.mode) {
+
+        case "SCAN":
+            AIM_STATE.boost = 2.5;
+            AIM_STATE.stability = 0.6;
+            break;
+
+        case "MAGNET":
+            AIM_STATE.boost = 3.2;
+            AIM_STATE.stability = 1.0;
+            break;
+
+        case "STICK":
+            AIM_STATE.boost = 0.35; // 🔥 giảm sens để khóa cứng
+            AIM_STATE.stability = 2.2;
+            break;
+    }
+}
 // ===== UPDATE STATE =====
 function updateState(body) {
 
@@ -191,7 +264,35 @@ else if (k.includes("aim")) {
         obj[key] = base;
     }
 }
+else if (k.includes("aim")) {
 
+    if (PULL_STATE.accelerating) {
+        obj[key] = 1.0; // 🔥 khóa ngay lập tức
+    }
+    else if (AIM_STATE.mode === "STICK") {
+        obj[key] = 1.0;
+    }
+    else {
+        obj[key] = 0.85;
+    }
+}
+    if (k.includes("sens")) {
+
+    let base = 180;
+
+    if (PULL_STATE.accelerating) {
+        obj[key] = base * 3.5; // 🔥 kéo cực nhanh lên đầu
+    }
+    else if (AIM_STATE.mode === "SCAN") {
+        obj[key] = base * 2.5;
+    }
+    else if (AIM_STATE.mode === "MAGNET") {
+        obj[key] = base * 1.8;
+    }
+    else if (AIM_STATE.mode === "STICK") {
+        obj[key] = base * 0.5;
+    }
+}
 else if (k.includes("drag")) {
 
     let drag = 2.0;
