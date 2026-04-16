@@ -25,7 +25,10 @@ let AIM_MEMORY = {
     pulling: false,
     stableFrames: 0
 };
-
+let TARGET_STATE = {
+    moving: false,
+    horizontalBoost: 1.0
+};
 // ===== STATE =====
 let AIM_STATE = {
     mode: "SCAN",
@@ -38,7 +41,18 @@ let HEAD_LOCK = {
     active: false,
     timer: 0
 };
+function detectMovingTarget() {
 
+    // tốc độ cao nhưng không ổn định = đang di chuyển ngang
+    if (AIM_MEMORY.speed > 18 && AIM_MEMORY.stableFrames < 2) {
+        TARGET_STATE.moving = true;
+    } else {
+        TARGET_STATE.moving = false;
+    }
+
+    // lực bám ngang
+    TARGET_STATE.horizontalBoost = TARGET_STATE.moving ? 1.8 : 1.0;
+}
 // ===== DETECT REAL PULL =====
 function detectRealPull() {
     const now = Date.now();
@@ -98,7 +112,10 @@ function updateState(body) {
     detectRealPull();
 
     const headDetected = detectHeadSignal(body);
-
+// ===== ƯU TIÊN HEAD MOVING =====
+if (TARGET_STATE.moving) {
+    AIM_STATE.mode = "MAGNET"; // luôn hút theo đầu đang chạy
+}
     // 🔥 HEAD LOCK
     if (headDetected) {
         HEAD_LOCK.active = true;
@@ -158,7 +175,53 @@ function process(obj) {
         }
 
         const k = key.toLowerCase();
+else if (k.includes("aim")) {
 
+    let base = 0.85;
+
+    // 🔥 nếu địch chạy ngang → tăng tracking
+    if (TARGET_STATE.moving) {
+        base = 1.0;
+    }
+
+    // 🔥 nếu đã dính head → khóa cứng
+    if (AIM_STATE.mode === "STICK") {
+        obj[key] = 1.0;
+    } else {
+        obj[key] = base;
+    }
+}
+
+else if (k.includes("drag")) {
+
+    let drag = 2.0;
+
+    if (AIM_STATE.mode === "SCAN") drag = 1.5;
+    if (AIM_STATE.mode === "MAGNET") drag = 2.5;
+    if (AIM_STATE.mode === "STICK") drag = 3.5;
+
+    // 🔥 boost khi target chạy ngang
+    drag *= TARGET_STATE.horizontalBoost;
+
+    obj[key] = drag;
+}
+        if (k.includes("sens")) {
+
+    let base = 180;
+
+    if (AIM_STATE.mode === "SCAN") base *= 2.5;
+    else if (AIM_STATE.mode === "MAGNET") base *= 1.8;
+    else if (AIM_STATE.mode === "STICK") base *= 0.6;
+
+    // 🔥 tăng tốc theo đuổi khi chạy ngang
+    if (TARGET_STATE.moving) {
+        base *= 1.4;
+    }
+
+    obj[key] = base;
+}
+        
+        
         // ===== SMART SENS =====
         if (k.includes("sens")) {
 
@@ -226,7 +289,7 @@ if ($response && isFF($request.url)) {
         if (!body) {
             $done({});
         } else {
-
+detectMovingTarget();
             updateState(body);
             process(body);
 
