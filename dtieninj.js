@@ -14,7 +14,13 @@ const isConfig = (url) => url && (
     url.includes("init") ||
     url.includes("profile")
 );
-
+let ADV_STATE = {
+    lastSpeed: 0,
+    direction: 0,        // 1 = tăng, -1 = giảm
+    switchDir: false,    // đổi hướng đột ngột
+    firing: false,       // spam bắn
+    predictBoost: 1.0
+};
 // ===== MEMORY =====
 let AIM_MEMORY = {
     lastTime: 0,
@@ -44,7 +50,32 @@ let PULL_STATE = {
     lastSpeed: 0,
     accelerating: false
 };
+function detectAdvanced() {
 
+    const speed = AIM_MEMORY.speed;
+    const diff = speed - ADV_STATE.lastSpeed;
+
+    // ===== hướng chuyển động =====
+    if (diff > 2) ADV_STATE.direction = 1;
+    else if (diff < -2) ADV_STATE.direction = -1;
+
+    // ===== detect đổi hướng đột ngột =====
+    ADV_STATE.switchDir = Math.abs(diff) > 10;
+
+    // ===== spam bắn (request cực dày) =====
+    ADV_STATE.firing = speed > 28;
+
+    // ===== predict trước 1 frame =====
+    if (ADV_STATE.direction === 1) {
+        ADV_STATE.predictBoost = 1.3;
+    } else if (ADV_STATE.direction === -1) {
+        ADV_STATE.predictBoost = 0.8;
+    } else {
+        ADV_STATE.predictBoost = 1.0;
+    }
+
+    ADV_STATE.lastSpeed = speed;
+}
 // ===== DETECT REAL =====
 function detectRealPull() {
     const now = Date.now();
@@ -110,7 +141,7 @@ function detectHeadSignal(obj) {
 
 // ===== UPDATE STATE =====
 function updateState(body) {
-
+detectAdvanced();
     detectRealPull();
     detectPullUp();
     detectMovingTarget();
@@ -134,9 +165,16 @@ function updateState(body) {
     }
 
     // ===== MODE =====
-    if (HEAD_LOCK.active) {
-        AIM_STATE.mode = "STICK";
-    }
+    // 🔥 spam bắn → giữ đầu tuyệt đối
+if (ADV_STATE.firing) {
+    HEAD_LOCK.active = true;
+    HEAD_LOCK.timer = 4;
+}
+
+// 🔥 đổi hướng → anti lệch
+if (ADV_STATE.switchDir) {
+    AIM_STATE.mode = "MAGNET";
+}
     else if (TARGET_STATE.moving) {
         AIM_STATE.mode = "MAGNET";
     }
@@ -179,52 +217,70 @@ function process(obj) {
 
         const k = key.toLowerCase();
 
-        // ===== SENS =====
-        if (k.includes("sens")) {
+       if (k.includes("sens")) {
 
-            let base = 180;
+    let base = 180;
 
-            if (PULL_STATE.accelerating) base *= 3.5;
-            else if (AIM_STATE.mode === "SCAN") base *= 2.5;
-            else if (AIM_STATE.mode === "MAGNET") base *= 1.8;
-            else if (AIM_STATE.mode === "STICK") base *= 0.5;
+    if (PULL_STATE.accelerating) base *= 3.5;
+    else if (AIM_STATE.mode === "SCAN") base *= 2.5;
+    else if (AIM_STATE.mode === "MAGNET") base *= 1.8;
+    else if (AIM_STATE.mode === "STICK") base *= 0.5;
 
-            if (TARGET_STATE.moving) base *= 1.4;
+    // 🔮 predict hướng chạy
+    base *= ADV_STATE.predictBoost;
 
-            obj[key] = base;
-        }
+    // 🔥 địch chạy ngang
+    if (TARGET_STATE.moving) base *= 1.4;
+
+    obj[key] = base;
+}
 
         // ===== AIM =====
-        else if (k.includes("aim")) {
+      else if (k.includes("aim")) {
 
-            if (PULL_STATE.accelerating) obj[key] = 1.0;
-            else if (AIM_STATE.mode === "STICK") obj[key] = 1.0;
-            else if (TARGET_STATE.moving) obj[key] = 1.0;
-            else obj[key] = 0.85;
-        }
-
+    if (ADV_STATE.firing) {
+        obj[key] = 1.0; // 🔥 giữ đầu khi bắn
+    }
+    else if (PULL_STATE.accelerating) {
+        obj[key] = 1.0;
+    }
+    else if (AIM_STATE.mode === "STICK") {
+        obj[key] = 1.0;
+    }
+    else if (TARGET_STATE.moving) {
+        obj[key] = 1.0;
+    }
+    else {
+        obj[key] = 0.85;
+    }
+}
         // ===== RECOIL =====
         else if (k.includes("recoil")) {
             obj[key] = 0;
         }
 
         // ===== DRAG =====
-        else if (k.includes("drag")) {
+       else if (k.includes("drag")) {
 
-            let drag = 2.0;
+    let drag = 2.0;
 
-            if (AIM_STATE.mode === "SCAN") drag = 1.5;
-            else if (AIM_STATE.mode === "MAGNET") drag = 2.5;
-            else if (AIM_STATE.mode === "STICK") drag = 3.5;
+    if (AIM_STATE.mode === "SCAN") drag = 1.5;
+    else if (AIM_STATE.mode === "MAGNET") drag = 2.5;
+    else if (AIM_STATE.mode === "STICK") drag = 3.5;
 
-            drag *= TARGET_STATE.horizontalBoost;
+    // 🔥 chống lệch khi đổi hướng
+    if (ADV_STATE.switchDir) {
+        drag *= 2.0;
+    }
 
-            obj[key] = drag;
-        }
+    drag *= TARGET_STATE.horizontalBoost;
+
+    obj[key] = drag;
+}
 
         // ===== HEAD PRIORITY =====
         else if (k.includes("head")) {
-            obj[key] = 1.0;
+            obj[key] = 100.0;
         }
     }
 }
