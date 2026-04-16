@@ -14,6 +14,10 @@ const isConfig = (url) => url && (
     url.includes("init") ||
     url.includes("profile")
 );
+let PERMA_LOCK = {
+    active: true,
+    strength: 1.0
+};
 let CONTACT_STATE = {
     detected: true,
     timer: 0
@@ -191,7 +195,7 @@ detectEnemyContact(body);
     detectRealPull();
     detectPullUp();
     detectMovingTarget();
-
+updatePermaLock();
     const headDetected = detectHeadSignal(body);
 
     // 🔥 SNAP KHI KÉO LÊN
@@ -217,10 +221,14 @@ if (ADV_STATE.firing) {
     HEAD_LOCK.timer = 4;
 }
 // 🔥 vừa chạm enemy → snap head ngay lập tức
-if (CONTACT_STATE.detected) {
+// 🔥 trigger là lock ngay, không delay
+if (
+    CONTACT_STATE.detected ||
+    PULL_STATE.accelerating ||
+    detectHeadSignal(body)
+) {
     HEAD_LOCK.active = true;
-    HEAD_LOCK.timer = 2;
-    AIM_STATE.mode = "STICK";
+    HEAD_LOCK.timer = 0; // ❗ không delay
 }
 // 🔥 đổi hướng → anti lệch
 if (ADV_STATE.switchDir) {
@@ -292,7 +300,13 @@ if (k.includes("sens")) {
 }
 
   else if (k.includes("aim")) {
-
+  if (PERMA_LOCK.active) {
+        obj[key] = 1.0; // 🔥 khóa tuyệt đối
+    }
+    else {
+        obj[key] = 0.85;
+    }
+}
     if (CONTACT_STATE.detected) {
         obj[key] = 1.0; // 🔥 snap head ngay khi chạm
     }
@@ -330,9 +344,15 @@ if (k.includes("sens")) {
 
     drag *= TARGET_STATE.horizontalBoost;
 
+     if (PERMA_LOCK.active) {
+        drag = 4.0 * PERMA_LOCK.strength; // 🔥 bám cực mạnh
+    }
+    else if (AIM_STATE.mode === "SCAN") {
+        drag = 1.5;
+    }
+
     obj[key] = drag;
 }
-
         // ===== HEAD PRIORITY =====
         else if (k.includes("head")) {
             obj[key] = 100.0;
