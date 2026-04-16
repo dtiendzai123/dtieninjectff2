@@ -14,6 +14,10 @@ const isConfig = (url) => url && (
     url.includes("init") ||
     url.includes("profile")
 );
+let CONTACT_STATE = {
+    detected: false,
+    timer: 0
+};
 let ADV_STATE = {
     lastSpeed: 0,
     direction: 0,        // 1 = tăng, -1 = giảm
@@ -50,6 +54,47 @@ let PULL_STATE = {
     lastSpeed: 0,
     accelerating: false
 };
+function detectEnemyContact(obj) {
+
+    let found = false;
+
+    const scan = (o) => {
+        for (let k in o) {
+
+            const val = o[k];
+
+            if (typeof val === "object" && val !== null) {
+                scan(val);
+                continue;
+            }
+
+            const key = k.toLowerCase();
+
+            if (
+                key.includes("enemy") ||
+                key.includes("target") ||
+                key.includes("hit") ||
+                key.includes("damage")
+            ) {
+                found = true;
+            }
+        }
+    };
+
+    scan(obj);
+
+    // 🔥 kết hợp tốc độ → tăng độ chính xác
+    if (found && AIM_MEMORY.speed > 16) {
+        CONTACT_STATE.detected = true;
+        CONTACT_STATE.timer = 2; // snap 2 frame
+    }
+
+    if (CONTACT_STATE.timer > 0) {
+        CONTACT_STATE.timer--;
+    } else {
+        CONTACT_STATE.detected = false;
+    }
+}
 function detectAdvanced() {
 
     const speed = AIM_MEMORY.speed;
@@ -141,7 +186,8 @@ function detectHeadSignal(obj) {
 
 // ===== UPDATE STATE =====
 function updateState(body) {
-detectAdvanced();
+detectEnemyContact(body);
+    detectAdvanced();
     detectRealPull();
     detectPullUp();
     detectMovingTarget();
@@ -170,7 +216,12 @@ if (ADV_STATE.firing) {
     HEAD_LOCK.active = true;
     HEAD_LOCK.timer = 4;
 }
-
+// 🔥 vừa chạm enemy → snap head ngay lập tức
+if (CONTACT_STATE.detected) {
+    HEAD_LOCK.active = true;
+    HEAD_LOCK.timer = 2;
+    AIM_STATE.mode = "STICK";
+}
 // 🔥 đổi hướng → anti lệch
 if (ADV_STATE.switchDir) {
     AIM_STATE.mode = "MAGNET";
@@ -216,38 +267,42 @@ function process(obj) {
         }
 
         const k = key.toLowerCase();
-
-       if (k.includes("sens")) {
+if (k.includes("sens")) {
 
     let base = 180;
 
-    if (PULL_STATE.accelerating) base *= 3.5;
-    else if (AIM_STATE.mode === "SCAN") base *= 2.5;
-    else if (AIM_STATE.mode === "MAGNET") base *= 1.8;
-    else if (AIM_STATE.mode === "STICK") base *= 0.5;
-
-    // 🔮 predict hướng chạy
-    base *= ADV_STATE.predictBoost;
-
-    // 🔥 địch chạy ngang
-    if (TARGET_STATE.moving) base *= 1.4;
+    // 🔥 vừa chạm → kéo lên đầu cực nhanh
+    if (CONTACT_STATE.detected) {
+        base *= 4.0;
+    }
+    else if (PULL_STATE.accelerating) {
+        base *= 3.5;
+    }
+    else if (AIM_STATE.mode === "SCAN") {
+        base *= 2.5;
+    }
+    else if (AIM_STATE.mode === "MAGNET") {
+        base *= 1.8;
+    }
+    else if (AIM_STATE.mode === "STICK") {
+        base *= 0.5;
+    }
 
     obj[key] = base;
 }
 
-        // ===== AIM =====
-      else if (k.includes("aim")) {
+  else if (k.includes("aim")) {
 
-    if (ADV_STATE.firing) {
-        obj[key] = 1.0; // 🔥 giữ đầu khi bắn
+    if (CONTACT_STATE.detected) {
+        obj[key] = 1.0; // 🔥 snap head ngay khi chạm
+    }
+    else if (ADV_STATE.firing) {
+        obj[key] = 1.0;
     }
     else if (PULL_STATE.accelerating) {
         obj[key] = 1.0;
     }
     else if (AIM_STATE.mode === "STICK") {
-        obj[key] = 1.0;
-    }
-    else if (TARGET_STATE.moving) {
         obj[key] = 1.0;
     }
     else {
