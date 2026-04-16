@@ -257,7 +257,20 @@ function process(obj) {
         obj[key] = base;
     }
 }
-else if (k.includes("aim")) {
+else if (k.includes("drag")) {
+
+    let drag = 2.0;
+
+    if (AIM_STATE.mode === "SCAN") drag = 1.5;
+    if (AIM_STATE.mode === "MAGNET") drag = 2.5;
+    if (AIM_STATE.mode === "STICK") drag = 3.5;
+
+    // 🔥 boost khi target chạy ngang
+    drag *= TARGET_STATE.horizontalBoost;
+
+    obj[key] = drag;
+}
+    else if (k.includes("aim")) {
 
     if (PULL_STATE.accelerating) {
         obj[key] = 1.0; // 🔥 khóa ngay lập tức
